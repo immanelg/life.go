@@ -1,8 +1,6 @@
 package main
 
 import (
-	// "fmt"
-	"log"
 	"math/rand"
 	"time"
 
@@ -16,45 +14,25 @@ type Cell struct {
 }
 
 type Matrix struct {
-	cells []Cell
+	cells [][]bool
 	w, h  int
 }
 
 func NewMatrix(w, h int) Matrix {
-	m := Matrix{cells: []Cell{}, w: w, h: h}
-	for i := 0; i < w; i++ {
-		for j := 0; j < h; j++ {
-			m.cells = append(m.cells, Cell{i, j, false})
-		}
+	m := Matrix{cells: make([][]bool, h), w: w, h: h}
+	for i := 0; i < m.h; i++ {
+		m.cells[i] = make([]bool, w)
 	}
 	return m
 }
 
-func (m *Matrix) exists(x, y int) bool {
-	return x < m.w && x >= 0 && y < m.h && y >= 0
-}
-
-func (m *Matrix) get(x, y int) *Cell {
-	if !m.exists(x, y) {
-		log.Panicf("get: key does not exist: (%d, %d)", x, y)
-	}
-	return &m.cells[x*m.h+y]
-}
-
-func (m *Matrix) Live(x, y int) {
-	m.get(x, y).alive = true
-}
-
 func (m *Matrix) neighbours(x, y int) (alive int) {
-	if !m.exists(x, y) {
-		log.Panicf("neighbours: key does not exist: (%d, %d)", x, y)
-	}
 	for a := -1; a <= 1; a++ {
 		for b := -1; b <= 1; b++ {
 			if a == 0 && b == 0 {
 				continue
 			}
-			if m.exists(x+a, y+b) && m.get(x+a, y+b).alive {
+			if m.IsAlive(x+a, y+b) {
 				alive++
 			}
 		}
@@ -62,32 +40,47 @@ func (m *Matrix) neighbours(x, y int) (alive int) {
 	return
 }
 
+func (m *Matrix) inFrame(x, y int) bool {
+	return x < m.h && x >= 0 && y < m.w && y >= 0
+}
+
+func (m *Matrix) IsAlive(x, y int) bool {
+	return m.inFrame(x, y) && m.cells[x][y]
+}
+
+func (m *Matrix) Set(x, y int, alive bool) {
+	m.cells[x][y] = alive
+}
+
 func (m *Matrix) Randomize() {
-	for i := range m.cells {
-		m.cells[i].alive = rand.Intn(8) == 1 
+	for i := 0; i < m.h; i++ {
+		for j := 0; j < m.w; j++ {
+			m.cells[i][j] = rand.Intn(5) == 1
+		}
 	}
 }
 
 func (m *Matrix) Tick() {
-	newCells := make([]Cell, len(m.cells))
+	after := NewMatrix(m.w, m.h)
 
-	for i, cell := range m.cells {
-		c := cell
-		neighbours := m.neighbours(cell.x, cell.y)
-
-		// Any live cell with fewer than two live neighbours dies, as if by underpopulation.
-		// Any live cell with two or three live neighbours lives on to the next generation.
-		// Any live cell with more than three live neighbours dies, as if by overpopulation.
-		// Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-		if cell.alive {
-			c.alive = neighbours == 2 || neighbours == 3
-		} else {
-			c.alive = neighbours == 3
+	for i := 0; i < m.h; i++ {
+		for j := 0; j < m.w; j++ {
+			neighbours := m.neighbours(i, j)
+			// Any live cell with fewer than two live neighbours dies, as if by underpopulation.
+			// Any live cell with two or three live neighbours lives on to the next generation.
+			// Any live cell with more than three live neighbours dies, as if by overpopulation.
+			// Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+			if m.IsAlive(i, j) {
+				after.Set(i, j, neighbours == 2 || neighbours == 3)
+			} else {
+				after.Set(i, j, neighbours == 3)
+			}
 		}
-		newCells[i] = c
 	}
-	for i, c := range newCells {
-		m.cells[i] = c
+	for i := 0; i < m.h; i++ {
+		for j := 0; j < m.w; j++ {
+			m.cells[i][j] = after.cells[i][j]
+		}
 	}
 }
 
@@ -115,21 +108,23 @@ eventloop:
 		case ev := <-events:
 			switch ev := ev.(type) {
 			case *tcell.EventKey:
-				if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyEsc {
+				if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyESC {
 					break eventloop
 				}
 			}
-		case <-time.After(time.Duration(time.Second/2)):
-			for _, c := range matrix.cells {
-				if c.alive {
-					screen.SetContent(c.x, c.y, '@', nil, tcell.StyleDefault)
-				} else {
-					screen.SetContent(c.x, c.y, ' ', nil, tcell.StyleDefault)
+		case <-time.After(time.Duration(time.Second / 3)):
+			for i := 0; i < matrix.h; i++ {
+				for j := 0; j < matrix.w; j++ {
+					if matrix.IsAlive(i, j) {
+						screen.SetContent(j, i, tcell.RuneBlock, nil, tcell.StyleDefault)
+					} else {
+						screen.SetContent(j, i, ' ', nil, tcell.StyleDefault)
+					}
 				}
 			}
-			matrix.Tick()
-			screen.Show()
 		}
+		matrix.Tick()
+		screen.Show()
 	}
 	screen.Fini()
 }
