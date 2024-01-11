@@ -7,12 +7,6 @@ import (
 	"github.com/gdamore/tcell"
 )
 
-type Cell struct {
-	x     int
-	y     int
-	alive bool
-}
-
 type Matrix struct {
 	cells [][]bool
 	w, h  int
@@ -32,7 +26,7 @@ func (m *Matrix) neighbours(x, y int) (alive int) {
 			if a == 0 && b == 0 {
 				continue
 			}
-			if m.IsAlive(x+a, y+b) {
+			if m.Exists(x+a, y+b) && m.Alive(x+a, y+b) {
 				alive++
 			}
 		}
@@ -40,12 +34,12 @@ func (m *Matrix) neighbours(x, y int) (alive int) {
 	return
 }
 
-func (m *Matrix) inFrame(x, y int) bool {
+func (m *Matrix) Exists(x, y int) bool {
 	return x < m.h && x >= 0 && y < m.w && y >= 0
 }
 
-func (m *Matrix) IsAlive(x, y int) bool {
-	return m.inFrame(x, y) && m.cells[x][y]
+func (m *Matrix) Alive(x, y int) bool {
+	return m.cells[x][y]
 }
 
 func (m *Matrix) Set(x, y int, alive bool) {
@@ -70,7 +64,7 @@ func (m *Matrix) Tick() {
 			// Any live cell with two or three live neighbours lives on to the next generation.
 			// Any live cell with more than three live neighbours dies, as if by overpopulation.
 			// Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-			if m.IsAlive(i, j) {
+			if m.Alive(i, j) {
 				after.Set(i, j, neighbours == 2 || neighbours == 3)
 			} else {
 				after.Set(i, j, neighbours == 3)
@@ -115,7 +109,7 @@ eventloop:
 		case <-time.After(time.Duration(time.Second / 3)):
 			for i := 0; i < matrix.h; i++ {
 				for j := 0; j < matrix.w; j++ {
-					if matrix.IsAlive(i, j) {
+					if matrix.Alive(i, j) {
 						screen.SetContent(j, i, tcell.RuneBlock, nil, tcell.StyleDefault)
 					} else {
 						screen.SetContent(j, i, ' ', nil, tcell.StyleDefault)
