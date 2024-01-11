@@ -45,7 +45,7 @@ func (app *App) Run() error {
 	defer app.screen.Fini()
 
 	app.screen.Clear()
-	screen.EnableMouse()
+	app.screen.EnableMouse()
 
 	err = app.loop()
 	if err != nil {
