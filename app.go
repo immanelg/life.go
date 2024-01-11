@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync"
 	"time"
 
 	"github.com/gdamore/tcell"
@@ -9,16 +8,16 @@ import (
 
 type App struct {
 	univ Universe
-	univMtx sync.Mutex
 
 	screen tcell.Screen
-	quit   chan struct{}
+	events chan interface{}
+	ticker time.Ticker
 }
 
 func NewApp() App {
 	app := App{
-		quit: make(chan struct{}),
-		univMtx: sync.Mutex{},
+		events: make(chan interface{}),
+		ticker: *time.NewTicker(time.Second / 3),
 	}
 	return app
 }
@@ -73,44 +72,51 @@ func (app *App) putUniverse() {
 }
 
 func (app *App) loop() (err error) {
-	go app.termevents()
+	go app.listenTermeEvents()
 
 	for {
 		select {
-		case <-app.quit:
-			return
 
-		case <-time.After(time.Second/10):
-			app.univMtx.Lock()
+		case ev := <-app.events:
+			switch ev := ev.(type) {
+			case QuitEvent:
+				return nil
+			case ResetEvent:
+				app.univ.Randomize()
+				app.screen.Show()
+			case ClickEvent:
+				i, j := ev.y, ev.x
+				if !app.univ.Exists(i, j) {
+					continue
+				}
+				app.univ.Set(i, j, true)
+				app.putRune(i, j, tcell.RuneBlock, tcell.StyleDefault.Foreground(tcell.ColorAqua))
+				app.screen.Show()
+			}
+
+		case <-app.ticker.C:
 			app.univ.Tick()
-			app.univMtx.Unlock()
 			app.putUniverse()
 			app.screen.Show()
 		}
 	}
 }
 
-func (app *App) termevents() {
+func (app *App) listenTermeEvents() {
 	for {
 		ev := app.screen.PollEvent()
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
 			if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyESC {
-				app.quit <- struct{}{}
+				app.events <- QuitEvent{}
+			} else if ev.Rune() == 'r' {
+				app.events <- ResetEvent{}
 			}
 		case *tcell.EventMouse:
 			but := ev.Buttons()
 			if but == tcell.Button1 {
-				j, i := ev.Position()
-				if !app.univ.Exists(i, j) {
-					continue
-				}
-				app.univMtx.Lock()
-				app.univ.Set(i, j, true)
-				app.univMtx.Unlock()
-
-				app.putRune(i, j, tcell.RuneBlock, tcell.StyleDefault.Foreground(tcell.ColorAqua))
-				app.screen.Show()
+				x, y := ev.Position()
+				app.events <- ClickEvent{x, y}
 			}
 		}
 	}
